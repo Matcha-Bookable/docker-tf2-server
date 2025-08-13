@@ -111,7 +111,7 @@ jobs:
       - name: Dispatch CompUpdate to organization repository
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_MATCHABOOKABLE_MATCHA_DOCKER_TF2 }}
           repository: Matcha-Bookable/matcha-docker-tf2
           event-type: update
 
@@ -123,7 +123,7 @@ jobs:
       - name: Dispatch MgeUpdate to individual repository
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.AVAN_MGEREPO_PAT }}
+          token: ${{ secrets.PAT_AVANAVAN_DOCKER_TF2MGE }}
           repository: avanavan/docker-tf2mge
           event-type: update
 
