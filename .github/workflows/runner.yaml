@@ -222,7 +222,7 @@ jobs:
     if: always() && needs.Trigger-Push.result == 'success'
     runs-on: self-hosted
     steps:
-      - name: Dispatch CompUpdate to organization repository
+      - name: Dispatch Competitive Server
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.PAT_MATCHABOOKABLE_MATCHA_DOCKER_TF2 }}
@@ -234,9 +234,21 @@ jobs:
     if: always() && needs.Trigger-Push.result == 'success'
     runs-on: self-hosted
     steps:
-      - name: Dispatch MgeUpdate to individual repository
+      - name: Dispatch MGE Server
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.PAT_AVANAVAN_DOCKER_TF2MGE }}
           repository: avanavan/docker-tf2mge
+          event-type: update
+
+  Dispatch-DevUpdate:
+    needs: Trigger-Push
+    if: always() && needs.Trigger-Push.result == 'success'
+    runs-on: self-hosted
+    steps:
+      - name: Dispatch Development Server
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.PAT_AVANAVAN_DOCKER_TF2DEV }}
+          repository: avanavan/docker-tf2-sourcemod-dev
           event-type: update
