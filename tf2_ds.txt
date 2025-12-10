@@ -1,4 +1,6 @@
-login anonymous
+@ShutdownOnFailedCommand 1
+@NoPromptForPassword 1
 force_install_dir /home/tf2/hlserver/tf2/
+login anonymous
 app_update 232250
 quit
