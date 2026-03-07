@@ -1,0 +1,40 @@
+name: Package Keepalive
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  package-keepalive-job:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Trigger push.yaml if package nearing 45-day expiry
+        env:
+          PKG_TOKEN: ${{ secrets.PAT_MATCHABOOKABLE_MATCHA_DOCKER_TF2 }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          response=$(curl -s \
+            -H "Authorization: Bearer $PKG_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/orgs/Matcha-Bookable/packages/container/docker-tf2-server/versions?per_page=1")
+
+          updated_at=$(echo "$response" | jq -r '.[0].updated_at')
+          echo "Latest package version updated at: $updated_at"
+
+          last_ts=$(date -d "$updated_at" +%s)
+          now=$(date +%s)
+          days_since=$(( (now - last_ts) / 86400 ))
+          echo "Days since last package release: $days_since"
+
+          if [ "$days_since" -ge 43 ]; then
+            echo "Approaching limit — triggering push.yaml"
+            curl -s -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/push.yaml/dispatches" \
+              -d '{"ref":"main"}'
+          else
+            echo "No package keepalive needed ($days_since days since last release)"
+          fi
