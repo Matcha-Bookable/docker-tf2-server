@@ -171,7 +171,7 @@ jobs:
     if: needs.check-tf2-build.outputs.changed == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: Checkout code
@@ -216,6 +216,18 @@ jobs:
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
+
+      - name: Update last-push state file
+        run: |
+          STATE_FILE=".github/tf2-state/last-package-push"
+          mkdir -p "$(dirname "$STATE_FILE")"
+          echo "$(date -u +%s)" > "$STATE_FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
+          git add "$STATE_FILE"
+          git commit -m "chore: update last-push timestamp [skip ci]" || echo "Nothing to commit"
+          git push
 
   Dispatch-CompUpdate:
     needs: Trigger-Push
