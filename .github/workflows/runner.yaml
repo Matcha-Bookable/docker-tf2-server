@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
+    inputs:
+      force_push:
+        description: 'Force trigger push regardless of version check'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -168,7 +173,7 @@ jobs:
 
   Trigger-Push:
     needs: check-tf2-build
-    if: needs.check-tf2-build.outputs.changed == 'true'
+    if: needs.check-tf2-build.outputs.changed == 'true' || inputs.force_push == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
