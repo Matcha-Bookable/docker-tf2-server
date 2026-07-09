@@ -100,7 +100,6 @@ jobs:
           # Default outputs
           echo "new_update_detected=false" >> $GITHUB_OUTPUT
           echo "new_version=" >> $GITHUB_OUTPUT
-          echo "needs_commit=false" >> $GITHUB_OUTPUT # Default commit to false
 
           success=$(jq -r '.response.success' <<< "$JSON_RESPONSE")
           if [[ "$success" != "true" ]]; then
@@ -132,43 +131,15 @@ jobs:
                 echo "New version detected: $required_version"
                 echo "new_update_detected=true" >> $GITHUB_OUTPUT
                 echo "new_version=$required_version" >> $GITHUB_OUTPUT
-                # Store the new version ID for the next run
-                echo "$required_version" > "${{ steps.paths.outputs.STATE_FILE }}"
-                # Signal that a commit is needed because we updated the file
-                echo "needs_commit=true" >> $GITHUB_OUTPUT
+                # NOTE: the version file is committed later by the Trigger-Push
+                # job, together with the last-push timestamp, so that both state
+                # files land in a single commit (and only after a successful
+                # Docker build/push).
              fi
           else
              echo "::error::Unexpected value for 'up_to_date' field: $up_to_date"
              jq '.' <<< "$JSON_RESPONSE"
              exit 1
-          fi
-
-      - name: Commit and push updated version file
-        if: steps.check.outputs.needs_commit == 'true'
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add "${{ steps.paths.outputs.STATE_FILE }}"
-
-          if git diff --staged --quiet; then
-            echo "Commit was signaled, but state file content hasn't changed unexpectedly. No commit needed."
-          else
-            echo "Committing updated state file..."
-            commit_msg="Runner: Updated Build to ${{ steps.check.outputs.new_version }}"
-            git commit -m "$commit_msg"
-            # Retry push
-            retry_count=0
-            max_retries=3
-            until git push || [ $retry_count -eq $max_retries ]; do
-              retry_count=$((retry_count+1))
-              echo "Push failed. Retrying (${retry_count}/${max_retries})..."
-              sleep 5
-            done
-            if [ $retry_count -eq $max_retries ]; then
-              echo "::error::Failed to push state file after multiple retries."
-              exit 1
-            fi
-            echo "State file pushed successfully."
           fi
 
   Trigger-Push:
@@ -222,17 +193,55 @@ jobs:
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
 
-      - name: Update last-push state file
+      - name: Commit updated state files
+        env:
+          # Sourced from the Steam API in the check-tf2-build job. Passed via env
+          # (not inlined into the script) to avoid shell/workflow injection.
+          NEW_VERSION: ${{ needs.check-tf2-build.outputs.new_version }}
         run: |
-          STATE_FILE=".github/tf2-state/last-package-push"
+          VERSION_FILE=".github/tf2-state/latest-version"
+          TIMESTAMP_FILE=".github/tf2-state/last-package-push"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase
-          mkdir -p "$(dirname "$STATE_FILE")"
-          echo "$(date -u +%s)" > "$STATE_FILE"
-          git add "$STATE_FILE"
-          git commit -m "chore: update last-push timestamp [skip ci]" || echo "Nothing to commit"
-          git push
+          mkdir -p ".github/tf2-state"
+
+          # Record the timestamp of this successful package push.
+          echo "$(date -u +%s)" > "$TIMESTAMP_FILE"
+          git add "$TIMESTAMP_FILE"
+
+          # If a new build version was detected, record it in the SAME commit so
+          # the version bump and the timestamp update arrive as one push event.
+          if [[ -n "$NEW_VERSION" ]]; then
+            echo "$NEW_VERSION" > "$VERSION_FILE"
+            git add "$VERSION_FILE"
+            commit_msg="Runner: Updated Build to ${NEW_VERSION} [skip ci]"
+          else
+            commit_msg="chore: update last-push timestamp [skip ci]"
+          fi
+
+          if git diff --staged --quiet; then
+            echo "No state changes to commit."
+            exit 0
+          fi
+
+          git commit -m "$commit_msg"
+
+          # Retry push in case a concurrent run pushed first.
+          retry_count=0
+          max_retries=3
+          until git push || [ $retry_count -eq $max_retries ]; do
+            retry_count=$((retry_count+1))
+            echo "Push failed. Retrying (${retry_count}/${max_retries})..."
+            git pull --rebase
+            sleep 5
+          done
+          if [ $retry_count -eq $max_retries ]; then
+            echo "::error::Failed to push state files after multiple retries."
+            exit 1
+          fi
+          echo "State files pushed successfully."
 
   Dispatch-CompUpdate:
     needs: Trigger-Push
